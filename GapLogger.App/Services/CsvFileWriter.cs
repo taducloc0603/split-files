@@ -43,7 +43,7 @@ public sealed class CsvFileWriter : IDisposable
     private static string Format(object? v) => v switch
     {
         null => "",
-        double d => d.ToString("G17", CultureInfo.InvariantCulture),
+        double d => d.ToString("F2", CultureInfo.InvariantCulture),
         decimal m => m.ToString(CultureInfo.InvariantCulture),
         IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
         _ => (v.ToString() ?? "").Replace(',', ';')

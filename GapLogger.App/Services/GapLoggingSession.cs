@@ -95,28 +95,36 @@ public sealed class GapLoggingSession
             var newSnap = new GapSnapshot(gapBuy, gapSell, snap.A?.Bid, snap.A?.Ask, snap.B?.Bid, snap.B?.Ask);
             lock (_lock) _latest = newSnap;
 
-            _wGap?.WriteRow(ts, gapBuy, gapSell, snap.A?.Bid, snap.A?.Ask, snap.B?.Bid, snap.B?.Ask, snap.ErrorA, snap.ErrorB);
-            Interlocked.Increment(ref GapRowCount);
+            bool tickAChanged = snap.A is not null && snap.A.TimestampMs != _lastTsA;
+            bool tickBChanged = snap.B is not null && snap.B.TimestampMs != _lastTsB;
+            bool errorA = snap.A is null && !string.IsNullOrEmpty(snap.ErrorA);
+            bool errorB = snap.B is null && !string.IsNullOrEmpty(snap.ErrorB);
 
-            if (snap.A is not null && snap.A.TimestampMs != _lastTsA)
+            if (tickAChanged || tickBChanged || errorA || errorB)
             {
-                _lastTsA = snap.A.TimestampMs;
+                _wGap?.WriteRow(ts, gapBuy, gapSell, snap.A?.Bid, snap.A?.Ask, snap.B?.Bid, snap.B?.Ask, snap.ErrorA, snap.ErrorB);
+                Interlocked.Increment(ref GapRowCount);
+            }
+
+            if (tickAChanged)
+            {
+                _lastTsA = snap.A!.TimestampMs;
                 _wTickA?.WriteRow(ts, snap.A.Symbol, snap.A.Bid, snap.A.Ask, snap.A.Spread, snap.A.TickTimeMsc, snap.A.Version, "");
                 Interlocked.Increment(ref TickARowCount);
             }
-            else if (snap.A is null && !string.IsNullOrEmpty(snap.ErrorA))
+            else if (errorA)
             {
                 _wTickA?.WriteRow(ts, "", "", "", "", "", "", snap.ErrorA);
                 Interlocked.Increment(ref TickARowCount);
             }
 
-            if (snap.B is not null && snap.B.TimestampMs != _lastTsB)
+            if (tickBChanged)
             {
-                _lastTsB = snap.B.TimestampMs;
+                _lastTsB = snap.B!.TimestampMs;
                 _wTickB?.WriteRow(ts, snap.B.Symbol, snap.B.Bid, snap.B.Ask, snap.B.Spread, snap.B.TickTimeMsc, snap.B.Version, "");
                 Interlocked.Increment(ref TickBRowCount);
             }
-            else if (snap.B is null && !string.IsNullOrEmpty(snap.ErrorB))
+            else if (errorB)
             {
                 _wTickB?.WriteRow(ts, "", "", "", "", "", "", snap.ErrorB);
                 Interlocked.Increment(ref TickBRowCount);
