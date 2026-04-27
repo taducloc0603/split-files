@@ -1,0 +1,112 @@
+name: Build and Release GapLogger
+
+on:
+  push:
+    branches: [ dev ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    env:
+      APP_NAME: GapLogger.App
+      MAJOR: 1
+      MINOR: 0
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Generate version
+        shell: pwsh
+        run: |
+          $version="${{ env.MAJOR }}.${{ env.MINOR }}.${{ github.run_number }}"
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+          echo "VERSIONED_EXE=${{ env.APP_NAME }}-$version.exe" >> $env:GITHUB_ENV
+          echo "LATEST_EXE=${{ env.APP_NAME }}-latest.exe" >> $env:GITHUB_ENV
+          echo "VERSIONED_ZIP=${{ env.APP_NAME }}-$version-portable-win-x64.zip" >> $env:GITHUB_ENV
+          echo "LATEST_ZIP=${{ env.APP_NAME }}-latest-portable-win-x64.zip" >> $env:GITHUB_ENV
+          echo "TAG=v$version" >> $env:GITHUB_ENV
+
+      - name: Restore dependencies
+        run: dotnet restore GapLogger.sln
+
+      - name: Build solution
+        run: dotnet build GapLogger.sln -c Release --no-restore
+
+      - name: Publish app (single-file)
+        shell: pwsh
+        run: |
+          dotnet publish GapLogger.App/GapLogger.App.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            /p:PublishSingleFile=true `
+            /p:IncludeNativeLibrariesForSelfExtract=true `
+            /p:Version=${{ env.VERSION }} `
+            /p:AssemblyVersion=${{ env.VERSION }} `
+            /p:FileVersion=${{ env.VERSION }} `
+            -o publish
+
+      - name: Publish app (portable folder)
+        shell: pwsh
+        run: |
+          dotnet publish GapLogger.App/GapLogger.App.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            /p:PublishSingleFile=false `
+            /p:Version=${{ env.VERSION }} `
+            /p:AssemblyVersion=${{ env.VERSION }} `
+            /p:FileVersion=${{ env.VERSION }} `
+            -o publish-portable
+
+      - name: Validate publish outputs
+        shell: pwsh
+        run: |
+          if (!(Test-Path "publish/${{ env.APP_NAME }}.exe")) {
+            throw "Single-file exe not found: publish/${{ env.APP_NAME }}.exe"
+          }
+
+          if (!(Test-Path "publish-portable/${{ env.APP_NAME }}.exe")) {
+            throw "Portable exe not found: publish-portable/${{ env.APP_NAME }}.exe"
+          }
+
+      - name: Prepare release files
+        shell: pwsh
+        run: |
+          Copy-Item "publish/${{ env.APP_NAME }}.exe" "publish/${{ env.VERSIONED_EXE }}"
+          Copy-Item "publish/${{ env.APP_NAME }}.exe" "publish/${{ env.LATEST_EXE }}"
+
+          Compress-Archive -Path "publish-portable/*" -DestinationPath "publish/${{ env.VERSIONED_ZIP }}" -Force
+          Copy-Item "publish/${{ env.VERSIONED_ZIP }}" "publish/${{ env.LATEST_ZIP }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Release ${{ env.VERSION }}
+          body: |
+            Assets:
+            - `${{ env.VERSIONED_EXE }}`: single-file self-contained
+            - `${{ env.VERSIONED_ZIP }}`: portable fallback
+
+            Notes:
+            - App reads `.env` if present (for `GAP_LOGGER_POINT`)
+            - CSV output is written to `%USERPROFILE%\Desktop\check-gap\`
+          files: |
+            publish/${{ env.VERSIONED_EXE }}
+            publish/${{ env.LATEST_EXE }}
+            publish/${{ env.VERSIONED_ZIP }}
+            publish/${{ env.LATEST_ZIP }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
