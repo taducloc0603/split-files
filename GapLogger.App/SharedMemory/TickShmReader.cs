@@ -28,6 +28,30 @@ public sealed class TickShmReader
     public event EventHandler<TickSnapshot>? SnapshotReceived;
     public bool IsRunning { get; private set; }
 
+    public static MapProbeResult Probe(string mapName)
+    {
+        var name = mapName?.Trim();
+        if (string.IsNullOrEmpty(name))
+            return new MapProbeResult(MapProbeStatus.Invalid, "Map name rỗng", null);
+        try
+        {
+            using var mmf = MemoryMappedFile.OpenExisting(name, MemoryMappedFileRights.Read);
+            using var accessor = mmf.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+            var (record, error) = TryParse(accessor);
+            return record is not null
+                ? new MapProbeResult(MapProbeStatus.Ok, null, record.Symbol)
+                : new MapProbeResult(MapProbeStatus.Invalid, error, null);
+        }
+        catch (FileNotFoundException)
+        {
+            return new MapProbeResult(MapProbeStatus.NotFound, null, null);
+        }
+        catch (Exception ex)
+        {
+            return new MapProbeResult(MapProbeStatus.Invalid, ex.Message, null);
+        }
+    }
+
     public Task StartAsync(string mapA, string mapB)
     {
         lock (_lock)
@@ -149,3 +173,7 @@ public sealed class TickShmReader
         public void Dispose() { Accessor.Dispose(); Mmf.Dispose(); }
     }
 }
+
+public enum MapProbeStatus { Ok, NotFound, Invalid }
+
+public sealed record MapProbeResult(MapProbeStatus Status, string? Error, string? Symbol);
