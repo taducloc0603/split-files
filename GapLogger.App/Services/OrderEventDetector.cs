@@ -23,7 +23,9 @@ public sealed class OrderEventDetector
             var ct = _cts.Token;
             var tradeMapA = MapNameHelper.BuildTradesMapName(tickMapA);
             var tradeMapB = MapNameHelper.BuildTradesMapName(tickMapB);
-            _worker = Task.Run(() => LoopAsync(tradeMapA, tradeMapB, onEvent, onError, ct));
+            var histMapA = MapNameHelper.BuildHistoryMapName(tickMapA);
+            var histMapB = MapNameHelper.BuildHistoryMapName(tickMapB);
+            _worker = Task.Run(() => LoopAsync(tradeMapA, tradeMapB, histMapA, histMapB, onEvent, onError, ct));
             IsRunning = true;
         }
         return Task.CompletedTask;
@@ -47,7 +49,7 @@ public sealed class OrderEventDetector
         lock (_lock) { _cts?.Dispose(); _cts = null; }
     }
 
-    private async Task LoopAsync(string tradeMapA, string tradeMapB,
+    private async Task LoopAsync(string tradeMapA, string tradeMapB, string histMapA, string histMapB,
         Action<OrderEvent> onEvent, Action<string>? onError, CancellationToken ct)
     {
         var openA = new HashSet<ulong>();
@@ -60,8 +62,8 @@ public sealed class OrderEventDetector
         {
             try
             {
-                Diff("A", tradeMapA, ref openA, ref primedA, onEvent);
-                Diff("B", tradeMapB, ref openB, ref primedB, onEvent);
+                Diff("A", tradeMapA, histMapA, ref openA, ref primedA, onEvent);
+                Diff("B", tradeMapB, histMapB, ref openB, ref primedB, onEvent);
             }
             catch (Exception ex)
             {
@@ -70,9 +72,11 @@ public sealed class OrderEventDetector
         }
     }
 
-    private void Diff(string side, string mapName, ref HashSet<ulong> known, ref bool primed, Action<OrderEvent> onEvent)
+    private void Diff(string side, string mapName, string histMapName, ref HashSet<ulong> known, ref bool primed, Action<OrderEvent> onEvent)
     {
-        var current = new HashSet<ulong>(_trades.Read(mapName).Select(r => r.Ticket));
+        var records = _trades.Read(mapName);
+        var byTicket = records.ToDictionary(r => r.Ticket);
+        var current = byTicket.Keys.ToHashSet();
         if (!primed)
         {
             known = current;
@@ -81,9 +85,25 @@ public sealed class OrderEventDetector
         }
         var now = DateTime.UtcNow;
         foreach (var newTicket in current.Except(known))
-            onEvent(new OrderEvent(side, "Open", newTicket, now));
-        foreach (var goneTicket in known.Except(current))
-            onEvent(new OrderEvent(side, "Close", goneTicket, now));
+        {
+            byTicket.TryGetValue(newTicket, out var rec);
+            onEvent(new OrderEvent(side, "Open", newTicket, now,
+                rec?.TradeType == 0 ? "BUY" : "SELL",
+                rec?.TimeMsc ?? 0,
+                null));
+        }
+        if (known.Except(current).Any())
+        {
+            var history = _trades.Read(histMapName).ToDictionary(r => r.Ticket);
+            foreach (var goneTicket in known.Except(current))
+            {
+                history.TryGetValue(goneTicket, out var hist);
+                onEvent(new OrderEvent(side, "Close", goneTicket, now,
+                    hist?.TradeType == 0 ? "BUY" : "SELL",
+                    hist?.TimeMsc ?? 0,
+                    hist?.Profit));
+            }
+        }
         known = current;
     }
 }
