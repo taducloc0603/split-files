@@ -27,3 +27,18 @@ public sealed record TradeRecord(
     double Profit,
     ulong TimeMsc,
     ulong OpenEaTimeLocal);
+
+public sealed record HistoryRecord(
+    ulong Ticket,
+    string Symbol,
+    int TradeType,
+    double Volume,
+    double OpenPrice,
+    double ClosePrice,
+    double Sl,
+    double Tp,
+    double Commission,
+    double Profit,
+    ulong OpenTimeMsc,
+    ulong CloseTimeMsc,
+    ulong CloseEaTimeLocal);

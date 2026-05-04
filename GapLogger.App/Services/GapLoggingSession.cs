@@ -52,7 +52,7 @@ public sealed class GapLoggingSession
 
         var tickHeader = new[] { "timestamp", "symbol", "bid", "ask", "spread", "tickTimeMsc", "version", "error" };
         var gapHeader = new[] { "timestamp", "gapBuy", "gapSell", "bidA", "askA", "bidB", "askB", "errorA", "errorB" };
-        var evHeader = new[] { "timestamp", "side", "kind", "ticket", "serverTime", "tradeType", "profit", "gapBuy", "gapSell", "bidA", "askA", "bidB", "askB" };
+        var evHeader = new[] { "timestamp", "ticket", "type", "serverTime", "tradeType", "profit", "gapBuy", "gapSell", "bidA", "askA", "bidB", "askB" };
 
         _wTickA = new CsvFileWriter(Path.Combine(folder, $"{suffix}_tickA.csv"), tickHeader);
         _wTickB = new CsvFileWriter(Path.Combine(folder, $"{suffix}_tickB.csv"), tickHeader);
@@ -147,7 +147,7 @@ public sealed class GapLoggingSession
                 ? DateTimeOffset.FromUnixTimeMilliseconds((long)ev.ServerTimeMsc).UtcDateTime.ToString("o", CultureInfo.InvariantCulture)
                 : "";
             object? profitVal = ev.Profit.HasValue ? ev.Profit.Value : null;
-            _wEvents?.WriteRow(ts, ev.Side, ev.Kind, ev.Ticket, serverTimeStr, ev.TradeType, profitVal,
+            _wEvents?.WriteRow(ts, ev.Ticket, ev.Kind, serverTimeStr, ev.TradeType, profitVal,
                 snap.GapBuy, snap.GapSell, snap.BidA, snap.AskA, snap.BidB, snap.AskB);
             Interlocked.Increment(ref EventRowCount);
         }

@@ -22,6 +22,7 @@ public partial class App : Application
             {
                 services.AddSingleton<TickShmReader>();
                 services.AddSingleton<TradesShmReader>();
+                services.AddSingleton<HistoryShmReader>();
                 services.AddSingleton<GapCalculator>();
                 services.AddSingleton<OrderEventDetector>();
                 services.AddSingleton<GapLoggingSession>();

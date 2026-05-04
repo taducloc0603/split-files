@@ -7,11 +7,16 @@ public sealed class OrderEventDetector
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
     private readonly TradesShmReader _trades;
+    private readonly HistoryShmReader _history;
     private CancellationTokenSource? _cts;
     private Task? _worker;
     private readonly object _lock = new();
 
-    public OrderEventDetector(TradesShmReader trades) { _trades = trades; }
+    public OrderEventDetector(TradesShmReader trades, HistoryShmReader history)
+    {
+        _trades = trades;
+        _history = history;
+    }
     public bool IsRunning { get; private set; }
 
     public Task StartAsync(string tickMapA, string tickMapB, Action<OrderEvent> onEvent, Action<string>? onError = null)
@@ -94,13 +99,13 @@ public sealed class OrderEventDetector
         }
         if (known.Except(current).Any())
         {
-            var history = _trades.Read(histMapName).ToDictionary(r => r.Ticket);
+            var history = _history.Read(histMapName).ToDictionary(r => r.Ticket);
             foreach (var goneTicket in known.Except(current))
             {
                 history.TryGetValue(goneTicket, out var hist);
                 onEvent(new OrderEvent(side, "Close", goneTicket, now,
                     hist?.TradeType == 0 ? "BUY" : "SELL",
-                    hist?.TimeMsc ?? 0,
+                    hist?.CloseTimeMsc ?? 0,
                     hist?.Profit));
             }
         }
